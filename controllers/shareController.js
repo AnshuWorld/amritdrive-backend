@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const ShareLink = require('../models/ShareLink');
 const { validationResult } = require('express-validator');
+const { pickValidOrigin } = require('../config/clientOrigins');
 
 // Generate share link
 exports.generateShareLink = async (req, res) => {
@@ -83,22 +84,8 @@ exports.getShareInfo = async (req, res) => {
 exports.accessSharedFile = async (req, res) => {
   try {
     const { token } = req.params;
-    if (!process.env.CLIENT_URL && !process.env.CLIENT_URLS) {
-      console.error('FATAL: CLIENT_URL/CLIENT_URLS is not defined in the .env file.');
-      return res.status(500).send('Server configuration error.');
-    }
-
-    const getRedirectOrigin = () => {
-      if (req.query?.redirect) {
-        return req.query.redirect.replace(/\/$/, '');
-      }
-      if (process.env.CLIENT_URLS) {
-        return process.env.CLIENT_URLS.split(',')[0].trim().replace(/\/$/, '');
-      }
-      return process.env.CLIENT_URL.replace(/\/$/, '');
-    };
-
-    return res.redirect(`${getRedirectOrigin()}/share/${token}`);
+    const origin = pickValidOrigin(req.query?.redirect);
+    return res.redirect(`${origin}/share/${token}`);
   } catch (error) {
     console.error('Share link redirect error:', error);
     return res.status(500).send('Error redirecting to the share page.');

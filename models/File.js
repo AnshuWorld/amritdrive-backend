@@ -40,6 +40,10 @@ const fileSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  trashedAt: {
+    type: Date,
+    default: null
+  },
   isPublic: {
     type: Boolean,
     default: false

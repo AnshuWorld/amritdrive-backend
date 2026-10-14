@@ -4,7 +4,13 @@ const normalizeOrigin = (value = '') => {
 };
 
 const splitOrigins = () => {
-  const origins = [];
+  const origins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:4173',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+  ];
   if (process.env.CLIENT_URLS) {
     origins.push(...process.env.CLIENT_URLS.split(','));
   }
@@ -25,7 +31,10 @@ const isOriginAllowed = (origin) => {
   return allowedOrigins.includes(normalized);
 };
 
-const getPrimaryOrigin = () => allowedOrigins[0] || '';
+const getPrimaryOrigin = () => {
+  if (process.env.CLIENT_URL) return normalizeOrigin(process.env.CLIENT_URL);
+  return allowedOrigins[0] || 'http://localhost:5173';
+};
 
 const pickValidOrigin = (candidate) => {
   if (candidate && isOriginAllowed(candidate)) {

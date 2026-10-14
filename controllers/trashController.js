@@ -1,6 +1,7 @@
 const File = require('../models/File');
 const Folder = require('../models/Folder');
 const User = require('../models/User');
+const ShareLink = require('../models/ShareLink');
 const { validationResult } = require('express-validator');
 const fs = require('fs');
 
@@ -77,11 +78,18 @@ exports.restoreFromTrash = async (req, res) => {
     // Check if parent folder exists and is not trashed
     if (item.folderId || item.parentId) {
       const parentId = item.folderId || item.parentId;
-      const parent = await Folder.findOne({ _id: parentId, userId, isTrashed: false });
+      const parent = await Folder.findOne({ _id: parentId, userId });
       
       if (!parent) {
+        // Parent folder was permanently deleted, restore to root
+        if (type === 'file') {
+          item.folderId = null;
+        } else {
+          item.parentId = null;
+        }
+      } else if (parent.isTrashed) {
         return res.status(400).json({ 
-          message: 'Cannot restore. Parent folder does not exist or is in trash' 
+          message: 'Cannot restore. Parent folder is in trash. Please restore parent folder first.' 
         });
       }
     }
@@ -131,10 +139,32 @@ exports.permanentDelete = async (req, res) => {
       return res.status(404).json({ message: `${type.charAt(0).toUpperCase() + type.slice(1)} not found in trash` });
     }
 
-    // If it's a folder, delete all files and subfolders first
+    // If it's a folder, delete all files and subfolders first, including physical files on disk
     if (type === 'folder') {
-      await File.deleteMany({ folderId: id, userId, isTrashed: true });
-      await Folder.deleteMany({ parentId: id, userId, isTrashed: true });
+      const filesInFolder = await File.find({ folderId: id, userId });
+      let freedBytes = 0;
+      for (const f of filesInFolder) {
+        if (f.filePath && fs.existsSync(f.filePath)) {
+          try {
+            fs.unlinkSync(f.filePath);
+            freedBytes += f.size || 0;
+          } catch (e) {
+            console.error('Error deleting physical file:', e);
+          }
+        }
+      }
+
+      if (freedBytes > 0) {
+        const user = await User.findById(userId);
+        if (user) {
+          user.storageUsed = Math.max(0, user.storageUsed - freedBytes);
+          await user.save();
+        }
+      }
+
+      await ShareLink.deleteMany({ file: { $in: filesInFolder.map(f => f._id) } });
+      await File.deleteMany({ folderId: id, userId });
+      await Folder.deleteMany({ parentId: id, userId });
     }
 
     // Delete the item itself
@@ -155,6 +185,7 @@ exports.permanentDelete = async (req, res) => {
         await user.save();
       }
       
+      await ShareLink.deleteMany({ file: id });
       await File.findByIdAndDelete(id);
     } else {
       await Folder.findByIdAndDelete(id);
@@ -191,6 +222,9 @@ exports.emptyTrash = async (req, res) => {
       await File.findByIdAndDelete(file._id);
     }
     
+    // Delete associated share links
+    await ShareLink.deleteMany({ file: { $in: trashedFiles.map(f => f._id) } });
+
     // Update user storage usage
     if (totalSizeDeleted > 0) {
       const user = await User.findById(userId);

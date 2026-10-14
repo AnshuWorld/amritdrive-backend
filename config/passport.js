@@ -31,39 +31,43 @@ passport.use(new JwtStrategy({
 }));
 
 // Google OAuth Strategy
-passport.use(new GoogleStrategy({
-  clientID: process.env.GOOGLE_CLIENT_ID,
-  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: googleCallbackURL
-}, async (accessToken, refreshToken, profile, done) => {
-  try {
-    let user = await User.findOne({ googleId: profile.id });
-    
-    if (user) {
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(new GoogleStrategy({
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: googleCallbackURL
+  }, async (accessToken, refreshToken, profile, done) => {
+    try {
+      let user = await User.findOne({ googleId: profile.id });
+      
+      if (user) {
+        return done(null, user);
+      }
+
+      user = await User.findOne({ email: profile.emails[0].value });
+      
+      if (user) {
+        user.googleId = profile.id;
+        await user.save();
+        return done(null, user);
+      }
+
+      user = await User.create({
+        googleId: profile.id,
+        name: profile.displayName,
+        email: profile.emails[0].value,
+        avatar: profile.photos && profile.photos[0] ? profile.photos[0].value : undefined,
+        isVerified: true
+      });
+
       return done(null, user);
+    } catch (error) {
+      return done(error, null);
     }
-
-    user = await User.findOne({ email: profile.emails[0].value });
-    
-    if (user) {
-      user.googleId = profile.id;
-      await user.save();
-      return done(null, user);
-    }
-
-    user = await User.create({
-      googleId: profile.id,
-      name: profile.displayName,
-      email: profile.emails[0].value,
-      avatar: profile.photos[0].value,
-      isVerified: true
-    });
-
-    return done(null, user);
-  } catch (error) {
-    return done(error, null);
-  }
-}));
+  }));
+} else {
+  console.warn('[passport] GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set. Google OAuth strategy skipped.');
+}
 
 passport.serializeUser((user, done) => {
   done(null, user.id);

@@ -23,6 +23,10 @@ const folderSchema = new mongoose.Schema({
   isTrashed: {
     type: Boolean,
     default: false
+  },
+  trashedAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true

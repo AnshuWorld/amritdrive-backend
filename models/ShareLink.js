@@ -35,6 +35,9 @@ const shareLinkSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  lastAccessedAt: {
+    type: Date
   }
 }, {
   timestamps: true
@@ -53,11 +56,11 @@ shareLinkSchema.pre('save', async function(next) {
 });
 
 shareLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-shareLinkSchema.index({ token: 1 });
 shareLinkSchema.index({ owner: 1, createdAt: -1 });
 
 shareLinkSchema.methods.comparePassword = async function(candidatePassword) {
   if (!this.password) return true;
+  if (!candidatePassword) return false;
   return await bcrypt.compare(candidatePassword, this.password);
 };
 

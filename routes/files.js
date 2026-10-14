@@ -8,7 +8,7 @@ const { check } = require('express-validator');
 // Validation middleware
 const validateUpload = [
   check('name', 'Name must be between 1 and 255 characters').optional().isLength({ min: 1, max: 255 }),
-  check('folderId', 'Invalid folder ID').optional().isMongoId(),
+  check('folderId', 'Invalid folder ID').optional({ checkFalsy: true }).isMongoId(),
   check('description', 'Description must be less than 500 characters').optional().isLength({ max: 500 })
 ];
 
@@ -22,7 +22,7 @@ const validateRename = [
 ];
 
 const validateMove = [
-  check('folderId', 'Invalid folder ID').optional().isMongoId()
+  check('folderId', 'Invalid folder ID').optional({ checkFalsy: true }).isMongoId()
 ];
 
 // @route   POST /api/files/upload
@@ -43,7 +43,7 @@ router.get('/', [
   auth,
   check('page', 'Page must be a positive integer').optional().isInt({ min: 1 }),
   check('limit', 'Limit must be between 1-100').optional().isInt({ min: 1, max: 100 }),
-  check('folderId', 'Invalid folder ID').optional().isMongoId(),
+  check('folderId', 'Invalid folder ID').optional({ checkFalsy: true }).isMongoId(),
   check('type', 'Invalid file type filter').optional().isIn(['image', 'document', 'video', 'audio', 'other']),
   check('search', 'Search query must be less than 100 characters').optional().isLength({ max: 100 })
 ], fileController.getFiles);
@@ -122,22 +122,12 @@ router.get('/shared/:shareToken/download', [
 ], fileController.downloadSharedFile);
 
 
-// @route   GET /api/files/:fileId/download
-// @desc    Download file
-// @access  Private
-router.get('/:fileId/download', [
-  auth,
-  ...validateFileId // Assuming you have this from your file
-], fileController.downloadFile);
-
-// --- ADD THIS NEW ROUTE ---
 // @route   GET /api/files/:fileId/view
 // @desc    View file inline
 // @access  Private
 router.get('/:fileId/view', [
   auth,
-  // You can re-use the same validation as download
-  check('fileId', 'Invalid file ID').isMongoId() 
+  ...validateFileId
 ], fileController.viewFile);
 
 module.exports = router;

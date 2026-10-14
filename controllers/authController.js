@@ -11,7 +11,7 @@ const {
 // Generate JWT Token
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE
+    expiresIn: process.env.JWT_EXPIRE || '7d'
   });
 };
 
@@ -178,6 +178,11 @@ exports.logout = async (req, res) => {
 
 // Google OAuth initialization
 exports.googleAuth = (req, res, next) => {
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    const redirectOrigin = resolveRedirectOrigin(req);
+    return res.redirect(`${redirectOrigin}/login?error=oauth_not_configured`);
+  }
+
   const redirect = req.query.redirect;
   const stateData = redirect ? { redirect } : {};
   const state = base64UrlEncode(stateData);

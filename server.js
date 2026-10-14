@@ -26,19 +26,25 @@ const app = express();
 connectDB();
 
 // --- Core Middleware ---
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(compression());
 
 // Secure CORS Configuration
 const corsOptions = {
   origin: (origin, callback) => {
     if (!origin) {
-      return callback(null, pickValidOrigin());
-    }
-    if (allowedOrigins.includes(origin.replace(/\/$/, ''))) {
       return callback(null, true);
     }
-    return callback(new Error('CORS not allowed'));
+    const normalized = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalized)) {
+      return callback(null, true);
+    }
+    if (process.env.NODE_ENV !== 'production' && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS not allowed for origin: ${origin}`));
   },
   credentials: true,
   optionsSuccessStatus: 200,

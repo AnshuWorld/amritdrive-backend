@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const File = require('../models/File');
 const Folder = require('../models/Folder');
 const User = require('../models/User');
+const ShareLink = require('../models/ShareLink');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -12,6 +13,9 @@ exports.uploadFile = async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { console.error('Error cleaning up invalid upload:', e); }
+      }
       return res.status(400).json({ errors: errors.array() });
     }
 
@@ -20,33 +24,50 @@ exports.uploadFile = async (req, res) => {
     }
 
     const { name, folderId, description } = req.body;
+    const cleanFolderId = (folderId && folderId !== 'null' && folderId !== 'undefined') ? folderId : null;
     const userId = req.user.id;
 
     // Check if folder exists and belongs to user
-    if (folderId) {
-      const folder = await Folder.findOne({ _id: folderId, userId });
+    if (cleanFolderId) {
+      const folder = await Folder.findOne({ _id: cleanFolderId, userId });
       if (!folder) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+          try { fs.unlinkSync(req.file.path); } catch (e) { console.error(e); }
+        }
         return res.status(404).json({ message: 'Folder not found' });
       }
     }
 
     // Check if file with same name exists in the same location
+    const fileNameToSave = (name && name.trim()) || req.file.originalname;
     const existingFile = await File.findOne({
-      name: name || req.file.originalname,
-      folderId: folderId || null,
+      name: fileNameToSave,
+      folderId: cleanFolderId,
       userId,
       isTrashed: false
     });
 
     if (existingFile) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { console.error(e); }
+      }
       return res.status(400).json({ message: 'File with this name already exists in this location' });
     }
 
     // Update user storage usage
     const user = await User.findById(userId);
+    if (!user) {
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { console.error(e); }
+      }
+      return res.status(404).json({ message: 'User not found' });
+    }
+
     if (user.storageUsed + req.file.size > user.storageLimit) {
       // Clean up uploaded file if storage limit exceeded
-      fs.unlinkSync(req.file.path);
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try { fs.unlinkSync(req.file.path); } catch (e) { console.error(e); }
+      }
       return res.status(413).json({ 
         message: 'Storage limit exceeded',
         storageInfo: user.getStorageInfo()
@@ -54,11 +75,11 @@ exports.uploadFile = async (req, res) => {
     }
 
     const file = new File({
-      name: name || req.file.originalname,
+      name: fileNameToSave,
       originalName: req.file.originalname,
       size: req.file.size,
       mimetype: req.file.mimetype,
-      folderId: folderId || null,
+      folderId: cleanFolderId,
       userId,
       description: description || '',
       filePath: req.file.path
@@ -76,6 +97,9 @@ exports.uploadFile = async (req, res) => {
       storageInfo: user.getStorageInfo()
     });
   } catch (error) {
+    if (req.file?.path && fs.existsSync(req.file.path)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { console.error(e); }
+    }
     console.error('Upload file error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
@@ -266,15 +290,15 @@ exports.getFiles = async (req, res) => {
     const { folderId, page = 1, limit = 20, search } = req.query;
 
     const query = { userId, isTrashed: false };
-
-    if (folderId) {
-      query.folderId = folderId;
-    } else if (folderId === '') {
-      query.folderId = null;
-    }
+    const cleanFolderId = (folderId && folderId !== 'null' && folderId !== 'undefined') ? folderId : null;
 
     if (search) {
       query.name = { $regex: search, $options: 'i' };
+      if (cleanFolderId) {
+        query.folderId = cleanFolderId;
+      }
+    } else {
+      query.folderId = cleanFolderId;
     }
 
     const files = await File.find(query)
@@ -287,7 +311,7 @@ exports.getFiles = async (req, res) => {
     res.json({
       files,
       totalPages: Math.ceil(total / limit),
-      currentPage: page,
+      currentPage: parseInt(page),
       total
     });
   } catch (error) {
@@ -322,6 +346,9 @@ exports.deleteFile = async (req, res) => {
       user.storageUsed = Math.max(0, user.storageUsed - file.size);
       await user.save();
     }
+
+    // Delete associated share links
+    await ShareLink.deleteMany({ file: fileId });
 
     // Delete from database
     await File.findByIdAndDelete(fileId);

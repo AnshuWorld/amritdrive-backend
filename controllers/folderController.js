@@ -12,11 +12,12 @@ exports.createFolder = async (req, res) => {
     }
 
     const { name, parentId } = req.body;
+    const cleanParentId = (parentId && parentId !== 'null' && parentId !== 'undefined') ? parentId : null;
     const userId = req.user.id;
 
     // Check if parent folder exists and belongs to user
-    if (parentId) {
-      const parentFolder = await Folder.findOne({ _id: parentId, userId, isTrashed: false });
+    if (cleanParentId) {
+      const parentFolder = await Folder.findOne({ _id: cleanParentId, userId, isTrashed: false });
       if (!parentFolder) {
         return res.status(404).json({ message: 'Parent folder not found' });
       }
@@ -25,7 +26,7 @@ exports.createFolder = async (req, res) => {
     // Check if folder with same name exists in the same location
     const existingFolder = await Folder.findOne({
       name,
-      parentId: parentId || null,
+      parentId: cleanParentId,
       userId,
       isTrashed: false
     });
@@ -37,7 +38,7 @@ exports.createFolder = async (req, res) => {
     const folder = new Folder({
       name,
       userId,
-      parentId: parentId || null
+      parentId: cleanParentId
     });
 
     await folder.save();
@@ -53,14 +54,9 @@ exports.getFolders = async (req, res) => {
   try {
     const userId = req.user.id;
     const { parentId } = req.query;
+    const cleanParentId = (parentId && parentId !== 'null' && parentId !== 'undefined') ? parentId : null;
 
-    const query = { userId, isTrashed: false };
-
-    if (parentId) {
-      query.parentId = parentId;
-    } else if (parentId === '') {
-      query.parentId = null;
-    }
+    const query = { userId, isTrashed: false, parentId: cleanParentId };
 
     const folders = await Folder.find(query).sort({ createdAt: -1 });
     res.json({ folders });
