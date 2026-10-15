@@ -17,6 +17,7 @@ const {
 const { handleUploadErrors } = require('./middleware/upload');
 require('./config/passport');
 const errorHandler = require('./middleware/errorHandler');
+const { swaggerUi, swaggerDocument, swaggerUiOptions } = require('./config/swagger');
 
 // Initialize Express App
 const app = express();
@@ -27,7 +28,8 @@ connectDB();
 
 // --- Core Middleware ---
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false
 }));
 app.use(compression());
 
@@ -63,6 +65,10 @@ app.use('/api/files', require('./routes/files'));
 app.use('/api/folders', require('./routes/folders'));
 app.use('/api/share', require('./routes/share'));
 app.use('/api/trash', require('./routes/trash'));
+
+// --- Swagger API Documentation ---
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, swaggerUiOptions));
+app.get('/docs', (req, res) => res.redirect('/api-docs'));
 
 // Health check route
 app.get('/health', (req, res) => {
