@@ -27,6 +27,15 @@ const folderSchema = new mongoose.Schema({
   trashedAt: {
     type: Date,
     default: null
+  },
+  isPublic: {
+    type: Boolean,
+    default: false
+  },
+  shareToken: {
+    type: String,
+    unique: true,
+    sparse: true
   }
 }, {
   timestamps: true

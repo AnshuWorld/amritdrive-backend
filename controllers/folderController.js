@@ -1,6 +1,8 @@
 const Folder = require('../models/Folder');
 const File = require('../models/File');
 const { validationResult } = require('express-validator');
+const crypto = require('crypto');
+const fs = require('fs');
 
 // Create folder
 exports.createFolder = async (req, res) => {
@@ -118,12 +120,126 @@ exports.updateFolder = async (req, res) => {
       folder.name = name;
     }
 
+    if (typeof req.body.isPublic === 'boolean') {
+      folder.isPublic = req.body.isPublic;
+      if (folder.isPublic && !folder.shareToken) {
+        folder.shareToken = crypto.randomBytes(16).toString('hex');
+      } else if (!folder.isPublic) {
+        folder.shareToken = null;
+      }
+    }
+
     folder.updatedAt = new Date();
     await folder.save();
 
     res.json({ message: 'Folder updated successfully', folder });
   } catch (error) {
     console.error('Update folder error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Toggle folder public / private visibility
+exports.toggleFolderVisibility = async (req, res) => {
+  try {
+    const { folderId } = req.params;
+    const { isPublic } = req.body;
+    const userId = req.user.id;
+
+    const folder = await Folder.findOne({ _id: folderId, userId, isTrashed: false });
+    if (!folder) {
+      return res.status(404).json({ message: 'Folder not found' });
+    }
+
+    const nextVisibility = typeof isPublic === 'boolean' ? isPublic : !folder.isPublic;
+    folder.isPublic = nextVisibility;
+
+    if (folder.isPublic) {
+      if (!folder.shareToken) {
+        folder.shareToken = crypto.randomBytes(16).toString('hex');
+      }
+    } else {
+      folder.shareToken = null;
+    }
+
+    folder.updatedAt = new Date();
+    await folder.save();
+
+    res.json({
+      message: `Folder is now ${folder.isPublic ? 'public' : 'private'}`,
+      folder
+    });
+  } catch (error) {
+    console.error('Toggle folder visibility error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Get public folder contents (no auth required)
+exports.getPublicFolder = async (req, res) => {
+  try {
+    const { shareToken } = req.params;
+
+    const folder = await Folder.findOne({ shareToken, isPublic: true, isTrashed: false })
+      .populate('userId', 'name email');
+
+    if (!folder) {
+      return res.status(404).json({ message: 'Public folder not found or link has been revoked' });
+    }
+
+    const files = await File.find({ folderId: folder._id, isTrashed: false }).select('-filePath');
+    const subfolders = await Folder.find({ parentId: folder._id, isTrashed: false });
+
+    res.json({
+      folder: {
+        _id: folder._id,
+        name: folder.name,
+        owner: folder.userId?.name || 'Drive User',
+        createdAt: folder.createdAt,
+        updatedAt: folder.updatedAt,
+        isPublic: folder.isPublic,
+        shareToken: folder.shareToken
+      },
+      files,
+      subfolders
+    });
+  } catch (error) {
+    console.error('Get public folder error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Download a file from a public folder (no auth required)
+exports.downloadPublicFolderFile = async (req, res) => {
+  try {
+    const { shareToken, fileId } = req.params;
+
+    const folder = await Folder.findOne({ shareToken, isPublic: true, isTrashed: false });
+    if (!folder) {
+      return res.status(404).json({ message: 'Public folder not found or access revoked' });
+    }
+
+    const file = await File.findOne({ _id: fileId, folderId: folder._id, isTrashed: false });
+    if (!file) {
+      return res.status(404).json({ message: 'File not found in this public folder' });
+    }
+
+    if (!fs.existsSync(file.filePath)) {
+      return res.status(404).json({ message: 'File not found on disk' });
+    }
+
+    res.setHeader('Content-Type', file.mimetype);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
+    res.setHeader('Content-Length', file.size);
+
+    const fileStream = fs.createReadStream(file.filePath);
+    fileStream.on('error', (err) => {
+      console.error('File stream error:', err);
+      res.status(500).json({ message: 'Error streaming file' });
+    });
+    fileStream.pipe(res);
+  } catch (error) {
+    console.error('Download public folder file error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };

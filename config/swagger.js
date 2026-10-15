@@ -68,6 +68,8 @@ const swaggerDocument = {
           parentId: { type: 'string', nullable: true, example: null },
           userId: { type: 'string', example: '65f2a1b9c8d7e6f5a4b3c2d1' },
           isTrashed: { type: 'boolean', example: false },
+          isPublic: { type: 'boolean', example: false },
+          shareToken: { type: 'string', nullable: true, example: 'f8d3e2a1b4c5' },
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' }
         }
@@ -547,6 +549,86 @@ const swaggerDocument = {
         responses: {
           200: { description: 'Folder deleted successfully' },
           400: { description: 'Cannot delete folder with subfolders or files' }
+        }
+      }
+    },
+    '/folders/{folderId}/visibility': {
+      patch: {
+        tags: ['Folders'],
+        summary: 'Toggle or set folder public / private visibility',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'folderId', in: 'path', required: true, schema: { type: 'string' } }
+        ],
+        requestBody: {
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  isPublic: { type: 'boolean', example: true, description: 'True for public, false for private (omitting toggles current state)' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          200: {
+            description: 'Folder visibility updated successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    message: { type: 'string', example: 'Folder is now public' },
+                    folder: { $ref: '#/components/schemas/Folder' }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: 'Folder not found' }
+        }
+      }
+    },
+    '/folders/public/{shareToken}': {
+      get: {
+        tags: ['Folders'],
+        summary: 'Get public folder details and contents (No authentication required)',
+        parameters: [
+          { name: 'shareToken', in: 'path', required: true, schema: { type: 'string' }, description: 'Public folder share token' }
+        ],
+        responses: {
+          200: {
+            description: 'Public folder contents retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    folder: { $ref: '#/components/schemas/Folder' },
+                    files: { type: 'array', items: { $ref: '#/components/schemas/File' } },
+                    subfolders: { type: 'array', items: { $ref: '#/components/schemas/Folder' } }
+                  }
+                }
+              }
+            }
+          },
+          404: { description: 'Public folder not found or link has been revoked' }
+        }
+      }
+    },
+    '/folders/public/{shareToken}/files/{fileId}/download': {
+      get: {
+        tags: ['Folders'],
+        summary: 'Download a file from a public folder (No authentication required)',
+        parameters: [
+          { name: 'shareToken', in: 'path', required: true, schema: { type: 'string' } },
+          { name: 'fileId', in: 'path', required: true, schema: { type: 'string' } }
+        ],
+        responses: {
+          200: { description: 'Binary file stream downloaded' },
+          404: { description: 'File or public folder not found' }
         }
       }
     },
