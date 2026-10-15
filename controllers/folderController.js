@@ -142,9 +142,14 @@ exports.updateFolder = async (req, res) => {
 // Toggle folder public / private visibility
 exports.toggleFolderVisibility = async (req, res) => {
   try {
-    const { folderId } = req.params;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const folderId = req.params.folderId || req.params.id;
     const { isPublic } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
 
     const folder = await Folder.findOne({ _id: folderId, userId, isTrashed: false });
     if (!folder) {

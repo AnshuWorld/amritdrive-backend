@@ -29,14 +29,17 @@ router.get('/public/:shareToken/files/:fileId/download', [
   check('fileId', 'Invalid file ID').isMongoId()
 ], folderController.downloadPublicFolderFile);
 
-// @route   PATCH /api/folders/:folderId/visibility
+// @route   PATCH|PUT|POST /api/folders/:folderId/visibility
 // @desc    Toggle or set folder public / private permission
 // @access  Private
-router.patch('/:folderId/visibility', [
+const visibilityValidators = [
   auth,
   check('folderId', 'Invalid folder ID').isMongoId(),
   check('isPublic', 'isPublic must be a boolean').optional().isBoolean()
-], folderController.toggleFolderVisibility);
+];
+router.patch('/:folderId/visibility', visibilityValidators, folderController.toggleFolderVisibility);
+router.put('/:folderId/visibility', visibilityValidators, folderController.toggleFolderVisibility);
+router.post('/:folderId/visibility', visibilityValidators, folderController.toggleFolderVisibility);
 
 // @route   GET /api/folders/:folderId
 // @desc    Get folder details

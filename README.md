@@ -192,6 +192,9 @@ The backend includes a fully interactive Swagger UI documentation page. You can 
 | `GET` | `/api/folders/:folderId` | Private | Get details of a single folder |
 | `PUT` | `/api/folders/:folderId` | Private | Rename a folder |
 | `DELETE` | `/api/folders/:folderId` | Private | Delete empty folder |
+| `PATCH` | `/api/folders/:folderId/visibility` | Private | Toggle or set public/private folder visibility (`isPublic`) |
+| `GET` | `/api/folders/public/:shareToken` | Public | Get public folder details, files, and subfolders |
+| `GET` | `/api/folders/public/:shareToken/files/:fileId/download` | Public | Download file from public folder without authentication |
 
 ### 🔗 4. Share Links (`/api/share`)
 | Method | Endpoint | Access | Description |
