@@ -10,6 +10,7 @@ const { check } = require('express-validator');
 router.post('/', [
   auth,
   check('fileId', 'Invalid file ID').isMongoId(),
+  check('permission', 'Permission must be viewer or editor').optional().isIn(['viewer', 'editor']),
   check('expiresIn', 'Invalid expiration days').optional({ checkFalsy: true }).isInt({ min: 1 }),
   check('password', 'Password must be at least 6 characters').optional().isLength({ min: 6 })
 ], shareController.generateShareLink);
@@ -28,6 +29,15 @@ router.get('/:token', shareController.accessSharedFile);
 // @desc    Get public metadata for a shared file
 // @access  Public
 router.get('/:token/info', shareController.getShareInfo);
+
+// @route   PUT /api/share/:token/edit
+// @desc    Edit shared file details (Editor permission required)
+// @access  Public
+router.put('/:token/edit', [
+  check('name', 'File name cannot be empty').optional().trim().notEmpty(),
+  check('description').optional().isString(),
+  check('password').optional().isString()
+], shareController.editSharedFile);
 
 // @route   POST /api/share/:token/download
 // @desc    Download shared file (now a POST to handle passwords)

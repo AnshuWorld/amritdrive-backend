@@ -3,6 +3,7 @@ const File = require('../models/File');
 const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const fs = require('fs');
+const storageService = require('../services/storageService');
 
 // Create folder
 exports.createFolder = async (req, res) => {
@@ -229,20 +230,7 @@ exports.downloadPublicFolderFile = async (req, res) => {
       return res.status(404).json({ message: 'File not found in this public folder' });
     }
 
-    if (!fs.existsSync(file.filePath)) {
-      return res.status(404).json({ message: 'File not found on disk' });
-    }
-
-    res.setHeader('Content-Type', file.mimetype);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
-    res.setHeader('Content-Length', file.size);
-
-    const fileStream = fs.createReadStream(file.filePath);
-    fileStream.on('error', (err) => {
-      console.error('File stream error:', err);
-      res.status(500).json({ message: 'Error streaming file' });
-    });
-    fileStream.pipe(res);
+    return storageService.streamFile(file, res, 'attachment');
   } catch (error) {
     console.error('Download public folder file error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });

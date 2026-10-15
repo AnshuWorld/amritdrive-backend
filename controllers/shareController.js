@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const File = require('../models/File');
 const fs = require('fs');
 const path = require('path');
+const storageService = require('../services/storageService');
 const ShareLink = require('../models/ShareLink');
 const { validationResult } = require('express-validator');
 const { pickValidOrigin } = require('../config/clientOrigins');
@@ -15,7 +16,7 @@ exports.generateShareLink = async (req, res) => {
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { fileId, expiresIn, password } = req.body;
+    const { fileId, expiresIn, password, permission } = req.body;
     const userId = req.user.id;
 
     const file = await File.findOne({ _id: fileId, userId, isTrashed: false });
@@ -23,14 +24,14 @@ exports.generateShareLink = async (req, res) => {
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // --- THIS IS THE FIX ---
     // Generate the token here, before creating the ShareLink object.
     const token = crypto.randomBytes(32).toString('hex');
 
     const share = new ShareLink({
-      token, // Add the generated token here
+      token,
       file: fileId,
       owner: userId,
+      permission: permission === 'editor' ? 'editor' : 'viewer',
       expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000) : null,
       password: password || null,
     });
@@ -40,6 +41,7 @@ exports.generateShareLink = async (req, res) => {
     res.status(201).json({
       message: 'Share link generated successfully',
       token: share.token,
+      permission: share.permission
     });
   } catch (error) {
     console.error('Generate share link error:', error);
@@ -48,11 +50,13 @@ exports.generateShareLink = async (req, res) => {
 };
 
 
-// It provides file metadata to the frontend share page.
+// Provides file metadata & permissions to the frontend share page.
 exports.getShareInfo = async (req, res) => {
   try {
     const { token } = req.params;
-    const share = await ShareLink.findOne({ token, isActive: true }).populate('file', 'name size mimetype');
+    const share = await ShareLink.findOne({ token, isActive: true })
+      .populate('file', 'name size mimetype description updatedAt')
+      .populate('owner', 'name email');
 
     if (!share || (share.expiresAt && new Date() > share.expiresAt)) {
       if (share) {
@@ -68,15 +72,82 @@ exports.getShareInfo = async (req, res) => {
 
     res.json({
       file: {
+        id: share.file._id,
         name: share.file.name,
         size: share.file.size,
         mimetype: share.file.mimetype,
+        description: share.file.description || '',
+        updatedAt: share.file.updatedAt
       },
+      permission: share.permission || 'viewer',
+      owner: share.owner ? { name: share.owner.name } : null,
       requiresPassword: !!share.password,
     });
   } catch (error) {
     console.error('Get share info error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Edit shared file (Editor permission required)
+exports.editSharedFile = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { name, description, password } = req.body;
+
+    const share = await ShareLink.findOne({ token, isActive: true }).populate('file');
+    if (!share || (share.expiresAt && new Date() > share.expiresAt)) {
+      if (share) {
+        share.isActive = false;
+        await share.save();
+      }
+      return res.status(404).json({ message: 'Share link not found or has expired' });
+    }
+
+    if (!share.file) {
+      return res.status(404).json({ message: 'The linked file has been deleted.' });
+    }
+
+    // Verify password if protected
+    const passwordMatch = await share.comparePassword(password);
+    if (!passwordMatch) {
+      return res.status(401).json({ message: 'Invalid password. Password is required to make edits.' });
+    }
+
+    // Check permission
+    if (share.permission !== 'editor') {
+      return res.status(403).json({
+        message: 'Forbidden: You have Viewer permission only. An Editor permission is required to modify this file.'
+      });
+    }
+
+    // Update file
+    const file = await File.findById(share.file._id);
+    if (!file || file.isTrashed) {
+      return res.status(404).json({ message: 'File is not available or has been moved to trash' });
+    }
+
+    if (name && name.trim()) {
+      file.name = name.trim();
+    }
+    if (description !== undefined) {
+      file.description = description;
+    }
+    file.updatedAt = new Date();
+    await file.save();
+
+    res.json({
+      message: 'File updated successfully by editor',
+      file: {
+        id: file._id,
+        name: file.name,
+        description: file.description,
+        updatedAt: file.updatedAt
+      }
+    });
+  } catch (error) {
+    console.error('Edit shared file error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
@@ -117,21 +188,11 @@ exports.downloadSharedFile = async (req, res) => {
       return res.status(401).json({ message: 'Invalid password' });
     }
 
-    const absoluteFilePath = path.resolve(share.file.filePath);
-    if (!fs.existsSync(absoluteFilePath)) {
-      return res.status(404).json({ message: 'File not found on the server.' });
-    }
-
-    res.setHeader('Content-Type', share.file.mimetype);
-    res.setHeader('Content-Disposition', `attachment; filename="${share.file.originalName}"`);
-    res.setHeader('Content-Length', share.file.size);
-
     share.downloadCount = (share.downloadCount || 0) + 1;
     share.lastAccessedAt = new Date();
     await share.save();
 
-    const fileStream = fs.createReadStream(absoluteFilePath);
-    fileStream.pipe(res);
+    return storageService.streamFile(share.file, res, 'attachment');
 
   } catch (error) {
     console.error('Download shared file error:', error);

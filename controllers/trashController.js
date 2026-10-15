@@ -4,6 +4,7 @@ const User = require('../models/User');
 const ShareLink = require('../models/ShareLink');
 const { validationResult } = require('express-validator');
 const fs = require('fs');
+const storageService = require('../services/storageService');
 
 // Move file/folder to trash
 exports.moveToTrash = async (req, res) => {
@@ -139,19 +140,13 @@ exports.permanentDelete = async (req, res) => {
       return res.status(404).json({ message: `${type.charAt(0).toUpperCase() + type.slice(1)} not found in trash` });
     }
 
-    // If it's a folder, delete all files and subfolders first, including physical files on disk
+    // If it's a folder, delete all files and subfolders first, including physical/cloud files
     if (type === 'folder') {
       const filesInFolder = await File.find({ folderId: id, userId });
       let freedBytes = 0;
       for (const f of filesInFolder) {
-        if (f.filePath && fs.existsSync(f.filePath)) {
-          try {
-            fs.unlinkSync(f.filePath);
-            freedBytes += f.size || 0;
-          } catch (e) {
-            console.error('Error deleting physical file:', e);
-          }
-        }
+        await storageService.deleteStoredFile(f);
+        freedBytes += f.size || 0;
       }
 
       if (freedBytes > 0) {
@@ -169,14 +164,8 @@ exports.permanentDelete = async (req, res) => {
 
     // Delete the item itself
     if (type === 'file') {
-      // Delete physical file from disk
-      if (fs.existsSync(item.filePath)) {
-        try {
-          fs.unlinkSync(item.filePath);
-        } catch (error) {
-          console.error('Error deleting physical file:', error);
-        }
-      }
+      // Delete file from storage (Cloudinary or local)
+      await storageService.deleteStoredFile(item);
       
       // Update user storage usage
       const user = await User.findById(userId);
@@ -207,18 +196,11 @@ exports.emptyTrash = async (req, res) => {
     const trashedFiles = await File.find({ userId, isTrashed: true });
     const trashedFolders = await Folder.find({ userId, isTrashed: true });
 
-    // Delete files from disk and database
+    // Delete files from storage and database
     let totalSizeDeleted = 0;
     for (const file of trashedFiles) {
-      // Delete physical file from disk
-      if (fs.existsSync(file.filePath)) {
-        try {
-          fs.unlinkSync(file.filePath);
-          totalSizeDeleted += file.size;
-        } catch (error) {
-          console.error('Error deleting physical file:', error);
-        }
-      }
+      await storageService.deleteStoredFile(file);
+      totalSizeDeleted += file.size || 0;
       await File.findByIdAndDelete(file._id);
     }
     

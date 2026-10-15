@@ -19,6 +19,11 @@ const shareLinkSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  permission: {
+    type: String,
+    enum: ['viewer', 'editor'],
+    default: 'viewer'
+  },
   expiresAt: {
     type: Date
   },

@@ -34,7 +34,24 @@ const fileSchema = new mongoose.Schema({
   },
   filePath: {
     type: String,
-    required: true
+    default: ''
+  },
+  cloudinaryId: {
+    type: String,
+    default: null
+  },
+  cloudinaryUrl: {
+    type: String,
+    default: null
+  },
+  resourceType: {
+    type: String,
+    default: 'auto'
+  },
+  storageType: {
+    type: String,
+    enum: ['local', 'cloudinary'],
+    default: 'local'
   },
   isTrashed: {
     type: Boolean,

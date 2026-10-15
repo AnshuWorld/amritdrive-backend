@@ -7,6 +7,7 @@ const { validationResult } = require('express-validator');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const storageService = require('../services/storageService');
 
 // Upload file
 exports.uploadFile = async (req, res) => {
@@ -74,6 +75,14 @@ exports.uploadFile = async (req, res) => {
       });
     }
 
+    // Upload to storage (Cloudinary if configured, else local fallback)
+    const storageResult = await storageService.uploadFile(
+      req.file.path,
+      req.file.originalname,
+      req.file.mimetype,
+      userId
+    );
+
     const file = new File({
       name: fileNameToSave,
       originalName: req.file.originalname,
@@ -82,7 +91,11 @@ exports.uploadFile = async (req, res) => {
       folderId: cleanFolderId,
       userId,
       description: description || '',
-      filePath: req.file.path
+      filePath: storageResult.filePath,
+      cloudinaryId: storageResult.cloudinaryId,
+      cloudinaryUrl: storageResult.cloudinaryUrl,
+      resourceType: storageResult.resourceType,
+      storageType: storageResult.storageType
     });
 
     await file.save();
@@ -116,25 +129,7 @@ exports.downloadFile = async (req, res) => {
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // Check if file exists on disk
-    if (!fs.existsSync(file.filePath)) {
-      return res.status(404).json({ message: 'File not found on disk' });
-    }
-
-    // Set headers for download
-    res.setHeader('Content-Type', file.mimetype);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
-    res.setHeader('Content-Length', file.size);
-
-    // Stream file from disk
-    const fileStream = fs.createReadStream(file.filePath);
-    
-    fileStream.on('error', (error) => {
-      console.error('File stream error:', error);
-      res.status(500).json({ message: 'Error reading file' });
-    });
-
-    fileStream.pipe(res);
+    return storageService.streamFile(file, res, 'attachment');
   } catch (error) {
     console.error('Download file error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -331,14 +326,8 @@ exports.deleteFile = async (req, res) => {
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // Delete physical file from disk
-    if (fs.existsSync(file.filePath)) {
-      try {
-        fs.unlinkSync(file.filePath);
-      } catch (error) {
-        console.error('Error deleting physical file:', error);
-      }
-    }
+    // Delete file from storage (Cloudinary or local)
+    await storageService.deleteStoredFile(file);
 
     // Update user storage usage
     const user = await User.findById(userId);
@@ -418,25 +407,7 @@ exports.downloadSharedFile = async (req, res) => {
       return res.status(404).json({ message: 'Shared file not found' });
     }
 
-    // Check if file exists on disk
-    if (!fs.existsSync(file.filePath)) {
-      return res.status(404).json({ message: 'File not found on disk' });
-    }
-
-    // Set headers for download
-    res.setHeader('Content-Type', file.mimetype);
-    res.setHeader('Content-Disposition', `attachment; filename="${file.originalName}"`);
-    res.setHeader('Content-Length', file.size);
-
-    // Stream file from disk
-    const fileStream = fs.createReadStream(file.filePath);
-    
-    fileStream.on('error', (error) => {
-      console.error('File stream error:', error);
-      res.status(500).json({ message: 'Error reading file' });
-    });
-
-    fileStream.pipe(res);
+    return storageService.streamFile(file, res, 'attachment');
   } catch (error) {
     console.error('Download shared file error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -456,17 +427,7 @@ exports.viewFile = async (req, res) => {
       return res.status(404).json({ message: 'File not found' });
     }
 
-    if (!fs.existsSync(file.filePath)) {
-      return res.status(404).json({ message: 'File not found on disk' });
-    }
-
-    res.setHeader('Content-Type', file.mimetype);
-    // This is the key difference: 'inline' tells the browser to display it
-    res.setHeader('Content-Disposition', `inline; filename="${file.originalName}"`);
-    res.setHeader('Content-Length', file.size);
-
-    const fileStream = fs.createReadStream(file.filePath);
-    fileStream.pipe(res);
+    return storageService.streamFile(file, res, 'inline');
 
   } catch (error) {
     console.error('View file error:', error);
