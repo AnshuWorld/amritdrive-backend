@@ -85,29 +85,18 @@ backend/
 Create a `.env` file in the `backend/` directory with the following variables:
 
 ```env
-# Server Port (Render sets this dynamically; defaults to 5000 locally)
-PORT=5000
-
-# MongoDB Connection String (Atlas or Local MongoDB)
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.xxx.mongodb.net/amrit_drive?retryWrites=true&w=majority
-
-# JWT Authentication Secret & Token Expiration
-JWT_SECRET=your_super_secret_jwt_key
-JWT_EXPIRE=7d
-
-# Allowed Frontend Origins (comma-separated for CORS)
+MONGODB_URI=mongodb+srv://amrit:amrit@cluster0.w3cea3r.mongodb.net/amrit_drive?appName=Cluster0
+GOOGLE_CLIENT_ID=your_id
+GOOGLE_CLIENT_SECRET=your_secret
+JWT_SECRET=siyaram
+JWT_EXPIRE=1d
 CLIENT_URL=https://amritdrive-frontend.vercel.app
 CLIENT_URLS=https://amritdrive-frontend.vercel.app,http://localhost:5173,http://localhost:3000
-
-# Backend Server URL (used for OAuth redirects)
+DEFAULT_QUOTA_BYTES=5242880
 SERVER_URL=https://amritdrive-backend.onrender.com
-
-# Default Storage Limit for New Users in Bytes (10 GB = 10737418240 bytes)
-DEFAULT_QUOTA_BYTES=10737418240
-
-# Google OAuth 2.0 Credentials (Optional: required only for Google Sign-In)
-GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+CLOUDINARY_CLOUD_NAME=qevgnqjf
+CLOUDINARY_API_KEY=868576327745795
+CLOUDINARY_API_SECRET=bZ8xVuxeqyBoOSJYC-l5KbvoeKk
 ```
 
 ---
